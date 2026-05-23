@@ -26,11 +26,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir playwright && playwright install-deps chromium 2>/dev/null || true && pip uninstall -y playwright
 
 # Windows core fonts (Arial, Times New Roman, Verdana, etc.)
-RUN echo "deb http://deb.debian.org/debian trixie contrib" >> /etc/apt/sources.list.d/contrib.list \
+# Best-effort: continue build if contrib/msttcorefonts is temporarily unavailable.
+RUN sh -c 'echo "deb https://deb.debian.org/debian trixie contrib" >> /etc/apt/sources.list.d/contrib.list \
     && echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections \
-    && apt-get update && apt-get install -y --no-install-recommends ttf-mscorefonts-installer \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ttf-mscorefonts-installer \
     && fc-cache -f \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*' || true
 
 # Install KasmVNC (auto-selects amd64 or arm64 based on build platform)
 ARG TARGETARCH
@@ -57,11 +59,11 @@ RUN python -c "from cloakbrowser.download import ensure_binary; ensure_binary()"
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/status')" || exit 1
+    CMD sh -c "wget -q -O - http://localhost:${PORT:-8080}/api/status >/dev/null" || exit 1
 
 VOLUME /data
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
